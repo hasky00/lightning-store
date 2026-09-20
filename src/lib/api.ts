@@ -3,8 +3,11 @@
 import type {
   ApiErrorCode,
   CheckoutResponse,
+  Order,
+  OrderContact,
   OrderStatusResponse,
   Product,
+  ProductListing,
   StoreSettings,
 } from "./types";
 
@@ -65,9 +68,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-export async function fetchProducts(): Promise<Product[]> {
-  const { products } = await request<{ products: Product[] }>("/api/products");
+export async function fetchProducts(): Promise<ProductListing[]> {
+  const { products } = await request<{ products: ProductListing[] }>(
+    "/api/products"
+  );
   return products;
+}
+
+export async function fetchProduct(id: string): Promise<ProductListing> {
+  const { product } = await request<{ product: ProductListing }>(
+    `/api/products/${encodeURIComponent(id)}`
+  );
+  return product;
 }
 
 export async function fetchSettings(): Promise<StoreSettings> {
@@ -77,10 +89,13 @@ export async function fetchSettings(): Promise<StoreSettings> {
   return settings;
 }
 
-export function startCheckout(productId: string): Promise<CheckoutResponse> {
+export function startCheckout(
+  productId: string,
+  contact?: OrderContact | null
+): Promise<CheckoutResponse> {
   return request<CheckoutResponse>("/api/checkout", {
     method: "POST",
-    body: JSON.stringify({ productId }),
+    body: JSON.stringify({ productId, contact: contact ?? null }),
   });
 }
 
@@ -117,6 +132,7 @@ export interface NewProduct {
   description: string;
   priceSats: number;
   image: string;
+  stock: number | null;
 }
 
 export async function createProduct(draft: NewProduct): Promise<Product> {
@@ -124,6 +140,17 @@ export async function createProduct(draft: NewProduct): Promise<Product> {
     method: "POST",
     body: JSON.stringify(draft),
   });
+  return product;
+}
+
+export async function updateProduct(
+  id: string,
+  draft: NewProduct
+): Promise<Product> {
+  const { product } = await request<{ product: Product }>(
+    `/api/products/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(draft) }
+  );
   return product;
 }
 
@@ -141,4 +168,20 @@ export async function updateStoreName(
     { method: "PATCH", body: JSON.stringify({ storeName }) }
   );
   return settings;
+}
+
+export async function fetchOrders(): Promise<Order[]> {
+  const { orders } = await request<{ orders: Order[] }>("/api/admin/orders");
+  return orders;
+}
+
+export async function setOrderFulfilled(
+  orderId: string,
+  fulfilled: boolean
+): Promise<Order> {
+  const { order } = await request<{ order: Order }>(
+    `/api/admin/orders/${encodeURIComponent(orderId)}`,
+    { method: "PATCH", body: JSON.stringify({ fulfilled }) }
+  );
+  return order;
 }

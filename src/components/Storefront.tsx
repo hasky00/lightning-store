@@ -9,16 +9,17 @@ import { WalletConnectModal } from "./WalletConnectModal";
 import { useWalletStore } from "@/store/walletStore";
 import { fetchProducts, fetchSettings } from "@/lib/api";
 import { DEFAULT_STORE_NAME } from "@/lib/constants";
-import type { Product } from "@/lib/types";
+import type { ProductListing } from "@/lib/types";
 
 export function Storefront() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductListing[]>([]);
   const [storeName, setStoreName] = useState(DEFAULT_STORE_NAME);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
+  const [checkoutProduct, setCheckoutProduct] =
+    useState<ProductListing | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
 
   const hydrateWallet = useWalletStore((s) => s.hydrate);

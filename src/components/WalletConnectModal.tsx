@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { X, Wallet } from "lucide-react";
 import { NwcConnectPanel } from "./NwcConnectPanel";
+import { useModal } from "@/lib/use-modal";
 import { useWalletStore } from "@/store/walletStore";
 import { toast } from "sonner";
 
@@ -15,6 +16,8 @@ export function WalletConnectModal({ open, onClose }: WalletConnectModalProps) {
   const { connected, url, connecting, connect, disconnect, setUrl } =
     useWalletStore();
   const [manualNwc, setManualNwc] = useState(url || "");
+  const handleClose = useCallback(() => onClose(), [onClose]);
+  const dialogRef = useModal<HTMLDivElement>(handleClose, open);
 
   if (!open) return null;
 
@@ -37,7 +40,14 @@ export function WalletConnectModal({ open, onClose }: WalletConnectModalProps) {
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="modal relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto p-6 sm:m-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wallet-title"
+        tabIndex={-1}
+        className="modal relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto p-6 sm:m-4"
+      >
         <button
           onClick={onClose}
           aria-label="Close wallet settings"
@@ -51,7 +61,9 @@ export function WalletConnectModal({ open, onClose }: WalletConnectModalProps) {
             <Wallet className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold">Connect Wallet</h2>
+            <h2 id="wallet-title" className="text-lg font-bold">
+              Connect Wallet
+            </h2>
             <p className="text-sm text-[var(--text-secondary)]">
               Optional — you can also just scan the invoice at checkout.
             </p>

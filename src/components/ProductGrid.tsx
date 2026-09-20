@@ -1,12 +1,12 @@
 "use client";
 
-import type { Product } from "@/lib/types";
+import type { ProductListing } from "@/lib/types";
 import { ProductCard } from "./ProductCard";
 import { PackageOpen } from "lucide-react";
 
 interface ProductGridProps {
-  products: Product[];
-  onBuy: (product: Product) => void;
+  products: ProductListing[];
+  onBuy: (product: ProductListing) => void;
 }
 
 export function ProductGrid({ products, onBuy }: ProductGridProps) {

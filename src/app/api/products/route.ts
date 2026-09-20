@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import {
   createProduct,
-  listProducts,
+  listListings,
   parseProductDraft,
   ProductValidationError,
 } from "@/server/products";
@@ -16,10 +16,10 @@ import { apiError, handleUnexpected, unauthorized } from "@/server/api";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Public: the catalogue every visitor sees. */
+/** Public: the catalogue every visitor sees, with live availability. */
 export async function GET() {
   try {
-    return Response.json({ products: await listProducts() });
+    return Response.json({ products: await listListings() });
   } catch (error) {
     return handleUnexpected(error, "GET /api/products");
   }

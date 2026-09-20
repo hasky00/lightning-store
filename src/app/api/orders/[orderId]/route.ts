@@ -1,6 +1,11 @@
 import type { NextRequest } from "next/server";
 import { getPaymentStatus } from "@/server/nwc";
 import { InvalidOrderTokenError, verifyOrderToken } from "@/server/order-token";
+import {
+  getOrderByPaymentHash,
+  recordPaymentState,
+  toReceipt,
+} from "@/server/orders";
 import { apiError, handleUnexpected } from "@/server/api";
 
 export const runtime = "nodejs";
@@ -20,6 +25,9 @@ const TOKEN_GRACE_SECONDS = 24 * 60 * 60;
  * the only statement about payment the storefront should ever trust. The
  * order id is a signed token: it proves the caller was handed this invoice by
  * us, which stops anyone from enumerating the wallet's other payments.
+ *
+ * The stored order is updated to match what the wallet said — the record
+ * follows the wallet, never the other way round.
  */
 export async function GET(
   _request: NextRequest,
@@ -54,14 +62,26 @@ export async function GET(
       );
     }
 
+    const order =
+      (await recordPaymentState(
+        claims.paymentHash,
+        status.state,
+        status.settledAt
+      )) ?? (await getOrderByPaymentHash(claims.paymentHash));
+
+    if (!order) {
+      return apiError("NOT_FOUND", "Unknown order.", 404);
+    }
+
     return Response.json({
       orderId,
-      state: status.state,
+      state: order.state,
       settledAt: status.settledAt,
       amountSats: status.amountSats,
       productId: claims.productId,
       priceSats: claims.priceSats,
       expiresAt: claims.expiresAt,
+      order: toReceipt(order),
     });
   } catch (error) {
     return handleUnexpected(error, "GET /api/orders/[orderId]");

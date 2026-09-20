@@ -19,7 +19,14 @@ import path from "node:path";
  *    write would silently discard the first.
  */
 
-export const DATA_DIR = path.join(process.cwd(), "data");
+/**
+ * Where the shop's own data lives. Overridable so a deployment can point at a
+ * mounted volume, and so tests can run against a throwaway directory instead
+ * of a developer's real catalogue.
+ */
+export const DATA_DIR = process.env.STORE_DATA_DIR
+  ? path.resolve(process.env.STORE_DATA_DIR)
+  : path.join(process.cwd(), "data");
 
 let writeQueue: Promise<unknown> = Promise.resolve();
 

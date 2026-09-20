@@ -18,6 +18,7 @@ export const SEED_PRODUCTS: Product[] = [
     priceSats: 2100,
     image: "",
     createdAt: 1758326400000,
+    stock: 12,
   },
   {
     id: "seed-sticker-pack",
@@ -26,6 +27,7 @@ export const SEED_PRODUCTS: Product[] = [
     priceSats: 500,
     image: "",
     createdAt: 1758326400001,
+    stock: null,
   },
   {
     id: "seed-nostr-tee",
@@ -34,6 +36,7 @@ export const SEED_PRODUCTS: Product[] = [
     priceSats: 15000,
     image: "",
     createdAt: 1758326400002,
+    stock: 5,
   },
   {
     id: "seed-pizza-pin",
@@ -42,6 +45,7 @@ export const SEED_PRODUCTS: Product[] = [
     priceSats: 10000,
     image: "",
     createdAt: 1758326400003,
+    stock: 1,
   },
   {
     id: "seed-hub-keychain",
@@ -50,6 +54,7 @@ export const SEED_PRODUCTS: Product[] = [
     priceSats: 3000,
     image: "",
     createdAt: 1758326400004,
+    stock: null,
   },
   {
     id: "seed-sats-calculator",
@@ -58,5 +63,6 @@ export const SEED_PRODUCTS: Product[] = [
     priceSats: 8000,
     image: "",
     createdAt: 1758326400005,
+    stock: 3,
   },
 ];

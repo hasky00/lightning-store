@@ -34,3 +34,9 @@ jobs:
       # real regression -- it means a secret is being read at build time.
       - name: Build
         run: npm run build
+
+      # Runs against a real server with the mock wallet, so the money paths
+      # (pricing, authorisation, order tokens, stock, settlement) are covered
+      # without any real credentials.
+      - name: Test
+        run: npm test

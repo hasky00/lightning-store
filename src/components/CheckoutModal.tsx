@@ -1,26 +1,38 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Zap, Copy, Check, Loader2, Clock, TriangleAlert } from "lucide-react";
+import {
+  X,
+  Zap,
+  Copy,
+  Check,
+  Loader2,
+  Clock,
+  TriangleAlert,
+  Receipt,
+} from "lucide-react";
 import QRCode from "react-qr-code";
-import type { Product } from "@/lib/types";
+import type { OrderReceipt, ProductListing } from "@/lib/types";
 import { ApiRequestError, fetchOrderStatus, startCheckout } from "@/lib/api";
 import { payInvoice } from "@/lib/nwc";
 import { formatSats, cn } from "@/lib/utils";
+import { useModal } from "@/lib/use-modal";
 import { useWalletStore } from "@/store/walletStore";
 import { toast } from "sonner";
 
 interface CheckoutModalProps {
-  product: Product;
+  product: ProductListing;
   onClose: () => void;
 }
 
 type Step =
+  | "details"
   | "creating"
   | "awaiting"
   | "paying"
   | "paid"
   | "expired"
+  | "sold-out"
   | "unconfigured"
   | "error";
 
@@ -39,39 +51,50 @@ const POLL_INTERVAL_MS = 2500;
  * product remounts it with fresh state instead of needing an effect to reset.
  */
 export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
-  const [step, setStep] = useState<Step>("creating");
+  const [step, setStep] = useState<Step>("details");
   const [invoice, setInvoice] = useState("");
   const [orderId, setOrderId] = useState("");
+  const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
   const [expiresAt, setExpiresAt] = useState(0);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const [attempt, setAttempt] = useState(0);
+
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
 
   const walletConnected = useWalletStore((s) => s.connected);
   const walletUrl = useWalletStore((s) => s.url);
 
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dialogRef = useModal<HTMLDivElement>(onClose);
 
   // --- Create the invoice -------------------------------------------------
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
+    if (attempt === 0) return;
     let cancelled = false;
 
-    startCheckout(product.id)
+    startCheckout(product.id, email || note ? { email, note } : null)
       .then((order) => {
         if (cancelled) return;
         setInvoice(order.invoice);
         setOrderId(order.orderId);
+        setReceipt(order.order);
         setExpiresAt(order.expiresAt);
         setStep("awaiting");
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        if (
-          err instanceof ApiRequestError &&
-          err.code === "MERCHANT_NOT_CONFIGURED"
-        ) {
-          setStep("unconfigured");
-          return;
+        if (err instanceof ApiRequestError) {
+          if (err.code === "MERCHANT_NOT_CONFIGURED") {
+            setStep("unconfigured");
+            return;
+          }
+          if (err.code === "SOLD_OUT") {
+            setStep("sold-out");
+            return;
+          }
         }
         setError(
           err instanceof Error ? err.message : "Could not create an invoice."
@@ -82,6 +105,9 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
     return () => {
       cancelled = true;
     };
+    // `email`/`note` are read at submit time, not tracked: changing them must
+    // not silently mint a second invoice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id, attempt]);
 
   // --- Poll the server for settlement -------------------------------------
@@ -98,6 +124,8 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
       try {
         const status = await fetchOrderStatus(orderId, controller.signal);
         if (cancelled) return;
+
+        setReceipt(status.order);
 
         if (status.state === "paid") {
           setStep("paid");
@@ -149,7 +177,7 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
     };
   }, []);
 
-  const retry = useCallback(() => {
+  const begin = useCallback(() => {
     setStep("creating");
     setError("");
     setInvoice("");
@@ -191,7 +219,14 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="modal relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto p-6 sm:m-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="checkout-title"
+        tabIndex={-1}
+        className="modal relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto p-6 sm:m-4"
+      >
         <button
           onClick={onClose}
           aria-label="Close checkout"
@@ -205,12 +240,76 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
             <Zap className="h-6 w-6 fill-current text-[var(--bolt)]" />
           </div>
           <div>
-            <h2 className="text-lg font-bold">{product.name}</h2>
+            <h2 id="checkout-title" className="pr-8 text-lg font-bold">
+              {product.name}
+            </h2>
             <p className="font-mono text-2xl font-bold text-[var(--bolt)]">
               {formatSats(product.priceSats)} sats
             </p>
           </div>
         </div>
+
+        {/* Payment progress is announced, since it changes without any action
+            from the buyer and a screen reader would otherwise miss it. */}
+        <p aria-live="polite" className="sr-only">
+          {step === "creating" && "Creating invoice"}
+          {step === "awaiting" && "Waiting for payment"}
+          {step === "paying" && "Confirming payment"}
+          {step === "paid" && "Payment confirmed"}
+          {step === "expired" && "Invoice expired"}
+        </p>
+
+        {step === "details" && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              begin();
+            }}
+          >
+            <div>
+              <label className="label" htmlFor="checkout-email">
+                Email <span className="text-[var(--text-muted)]">(optional)</span>
+              </label>
+              <input
+                id="checkout-email"
+                type="email"
+                autoComplete="email"
+                className="input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                So the shop can reach you about this order.
+              </p>
+            </div>
+
+            <div>
+              <label className="label" htmlFor="checkout-note">
+                Note{" "}
+                <span className="text-[var(--text-muted)]">(optional)</span>
+              </label>
+              <textarea
+                id="checkout-note"
+                className="input min-h-[72px] resize-y"
+                maxLength={500}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Delivery address, size, or anything the shop should know…"
+              />
+            </div>
+
+            <button type="submit" className="btn btn-primary w-full">
+              <Zap className="h-4 w-4 fill-current" />
+              Continue to Payment
+            </button>
+            <p className="text-center text-xs text-[var(--text-muted)]">
+              You will see a Lightning invoice next. Nothing is charged until
+              you pay it.
+            </p>
+          </form>
+        )}
 
         {step === "creating" && (
           <div className="flex flex-col items-center gap-3 py-8">
@@ -227,8 +326,17 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
               This store cannot take payments yet.
             </p>
             <p className="text-sm text-[var(--text-secondary)]">
-              Its owner needs to set <code>MERCHANT_NWC_URL</code> in the
-              server environment. See <code>.env.example</code>.
+              Its owner needs to set <code>MERCHANT_NWC_URL</code> in the server
+              environment. See <code>.env.example</code>.
+            </p>
+          </div>
+        )}
+
+        {step === "sold-out" && (
+          <div className="warning-box flex items-start gap-2">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)]" />
+            <p className="text-sm text-[var(--text-primary)]">
+              Someone got the last one first. Nothing was charged.
             </p>
           </div>
         )}
@@ -240,7 +348,7 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
                 {error}
               </p>
             </div>
-            <button onClick={retry} className="btn btn-primary w-full">
+            <button onClick={begin} className="btn btn-primary w-full">
               <Zap className="h-4 w-4 fill-current" />
               Try Again
             </button>
@@ -255,7 +363,7 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
                 This invoice expired before it was paid. Nothing was charged.
               </p>
             </div>
-            <button onClick={retry} className="btn btn-primary w-full">
+            <button onClick={begin} className="btn btn-primary w-full">
               <Zap className="h-4 w-4 fill-current" />
               Get a New Invoice
             </button>
@@ -332,6 +440,25 @@ export function CheckoutModal({ product, onClose }: CheckoutModalProps) {
                 The shop received your sats. Enjoy {product.name}!
               </p>
             </div>
+
+            {receipt && (
+              <div className="w-full rounded-xl bg-[var(--surface-2)] p-4 text-left">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  <Receipt className="h-3.5 w-3.5" />
+                  Your order reference
+                </p>
+                <p className="mt-1 font-mono text-xl font-bold text-[var(--bolt)]">
+                  {receipt.reference}
+                </p>
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  Quote this if you contact the shop about your order.
+                  {receipt.contact?.email
+                    ? ` A copy of this reference belongs with ${receipt.contact.email}.`
+                    : ""}
+                </p>
+              </div>
+            )}
+
             <button onClick={onClose} className="btn btn-primary w-full">
               Done
             </button>

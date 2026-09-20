@@ -3,9 +3,14 @@ import "server-only";
 import { NWCClient, type Nip47Transaction } from "@getalby/sdk/nwc";
 import { merchantNwcUrl } from "./env";
 import { satsToMsats } from "@/lib/utils";
+import {
+  isMockWallet,
+  mockLookupInvoice,
+  mockMakeInvoice,
+} from "./mock-wallet";
 
 /**
- * Server-side merchant wallet access.
+ * Merchant wallet access.
  *
  * This is the only place the merchant connection secret is used. Two things
  * happen here and nowhere else:
@@ -13,7 +18,7 @@ import { satsToMsats } from "@/lib/utils";
  *   - asking the wallet whether that invoice was actually settled
  *
  * The wallet is the source of truth for payment. A client claiming "I paid"
- * is not evidence; `lookupInvoice` is.
+ * is not evidence; `getPaymentStatus` is.
  */
 
 export const INVOICE_EXPIRY_SECONDS = 600;
@@ -36,8 +41,18 @@ export async function createInvoice(options: {
   priceSats: number;
   description: string;
 }): Promise<Nip47Transaction> {
+  const amount = satsToMsats(options.priceSats);
+
+  if (isMockWallet()) {
+    return mockMakeInvoice({
+      amountMsats: amount,
+      description: options.description,
+      expirySeconds: INVOICE_EXPIRY_SECONDS,
+    });
+  }
+
   return merchantClient().makeInvoice({
-    amount: satsToMsats(options.priceSats),
+    amount,
     description: options.description,
     expiry: INVOICE_EXPIRY_SECONDS,
   });
@@ -60,12 +75,18 @@ export interface PaymentStatus {
 export async function getPaymentStatus(
   paymentHash: string
 ): Promise<PaymentStatus | null> {
-  let tx: Nip47Transaction;
-  try {
-    tx = await merchantClient().lookupInvoice({ payment_hash: paymentHash });
-  } catch (error) {
-    if (isNotFoundError(error)) return null;
-    throw error;
+  let tx: Nip47Transaction | null;
+
+  if (isMockWallet()) {
+    tx = mockLookupInvoice(paymentHash);
+    if (!tx) return null;
+  } else {
+    try {
+      tx = await merchantClient().lookupInvoice({ payment_hash: paymentHash });
+    } catch (error) {
+      if (isNotFoundError(error)) return null;
+      throw error;
+    }
   }
 
   return {
