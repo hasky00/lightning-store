@@ -2,8 +2,16 @@
 
 import { useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
+import { toast } from "sonner";
 import { resizeImage } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+
+/**
+ * Anything larger is rejected before we spend time decoding it. The resize
+ * below shrinks the picture well under the server's own 3 MB cap, so this
+ * limit is about the *source* file, not what finally gets stored.
+ */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 interface ImageUploadProps {
   value: string;
@@ -18,8 +26,8 @@ export function ImageUpload({ value, onChange, className }: ImageUploadProps) {
 
   async function handleFile(file: File) {
     if (!file.type.startsWith("image/")) return;
-    if (file.size > 10 * 1024 * 1024) {
-      alert("Image must be under 10 MB");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error("Image must be under 10 MB");
       return;
     }
     setLoading(true);
@@ -27,7 +35,7 @@ export function ImageUpload({ value, onChange, className }: ImageUploadProps) {
       const dataUrl = await resizeImage(file);
       onChange(dataUrl);
     } catch {
-      alert("Failed to process image");
+      toast.error("Could not read that image");
     } finally {
       setLoading(false);
     }

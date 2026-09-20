@@ -218,3 +218,18 @@ body {
   background: var(--border);
   border-radius: 3px;
 }
+/*
+ * Animation can cause real discomfort for some people, and every moving thing
+ * in this app is decorative -- a spinner still reads as "busy" when it is not
+ * spinning, because the text next to it says so.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

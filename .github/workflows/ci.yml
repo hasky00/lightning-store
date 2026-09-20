@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Route types (the RouteContext helpers) are generated, not committed,
+      # so they have to exist before anything type-checks.
+      - name: Generate route types
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      # No secrets are set here on purpose: the build must not need them.
+      # If this step ever starts failing for a missing wallet key, that is a
+      # real regression -- it means a secret is being read at build time.
+      - name: Build
+        run: npm run build
+
+      # Runs against a real server with the mock wallet, so the money paths
+      # (pricing, authorisation, order tokens, stock, settlement) are covered
+      # without any real credentials.
+      - name: Test
+        run: npm test

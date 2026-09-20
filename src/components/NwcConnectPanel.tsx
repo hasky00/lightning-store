@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Wallet, Loader2, ExternalLink, Check, ClipboardPaste } from "lucide-react";
 import { loadHubUrl, saveHubUrl, DEFAULT_HUB_URL, HUB_CONNECTIONS_URL } from "@/lib/nwc";
 import { toast } from "sonner";
 
 interface NwcConnectPanelProps {
-  role: "buyer" | "merchant";
   connected: boolean;
   connecting: boolean;
   nwcUrl: string;
@@ -16,19 +15,7 @@ interface NwcConnectPanelProps {
   onDisconnect?: () => void;
 }
 
-const ROLE_COPY = {
-  merchant: {
-    permissions: "make_invoice",
-    action: "receive payments and create invoices",
-  },
-  buyer: {
-    permissions: "pay_invoice",
-    action: "send Lightning payments",
-  },
-};
-
 export function NwcConnectPanel({
-  role,
   connected,
   connecting,
   nwcUrl,
@@ -37,12 +24,10 @@ export function NwcConnectPanel({
   onSaveManual,
   onDisconnect,
 }: NwcConnectPanelProps) {
-  const [hubUrl, setHubUrl] = useState(DEFAULT_HUB_URL);
-  const copy = ROLE_COPY[role];
-
-  useEffect(() => {
-    setHubUrl(loadHubUrl());
-  }, []);
+  // Read from localStorage during the first render rather than in an effect.
+  // Safe here because this panel only ever renders inside an already-open
+  // modal, which means the browser — it is never server-rendered.
+  const [hubUrl, setHubUrl] = useState(() => loadHubUrl());
 
   async function handleConnect() {
     const trimmed = hubUrl.trim();
@@ -97,19 +82,19 @@ export function NwcConnectPanel({
           </li>
           <li>Go to Connections → Add Connection</li>
           <li>
-            Enable <code className="text-[var(--bolt)]">{copy.permissions}</code>{" "}
+            Enable the <code className="text-[var(--bolt)]">pay_invoice</code>{" "}
             permission
           </li>
-          <li>Copy the connection string and paste below (Option B)</li>
+          <li>Copy the connection string and paste it below (Option B)</li>
         </ol>
       </div>
 
       <div>
-        <label className="label" htmlFor={`hub-${role}`}>
+        <label className="label" htmlFor="hub-url">
           Alby Hub URL
         </label>
         <input
-          id={`hub-${role}`}
+          id="hub-url"
           className="input font-mono text-sm"
           value={hubUrl}
           onChange={(e) => setHubUrl(e.target.value)}
@@ -172,7 +157,10 @@ export function NwcConnectPanel({
       </a>
 
       {connected && onDisconnect && (
-        <button onClick={onDisconnect} className="btn btn-ghost w-full text-[var(--error)]">
+        <button
+          onClick={onDisconnect}
+          className="btn btn-ghost w-full text-[var(--error)]"
+        >
           Disconnect
         </button>
       )}

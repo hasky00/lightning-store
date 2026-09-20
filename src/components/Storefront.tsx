@@ -1,42 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Zap, Loader2, TriangleAlert } from "lucide-react";
 import { Header } from "./Header";
 import { ProductGrid } from "./ProductGrid";
 import { CheckoutModal } from "./CheckoutModal";
 import { WalletConnectModal } from "./WalletConnectModal";
-import { useProductStore } from "@/store/productStore";
 import { useWalletStore } from "@/store/walletStore";
-import type { Product } from "@/lib/types";
-import { Zap } from "lucide-react";
+import { fetchProducts, fetchSettings } from "@/lib/api";
+import { DEFAULT_STORE_NAME } from "@/lib/constants";
+import type { ProductListing } from "@/lib/types";
 
 export function Storefront() {
-  const products = useProductStore((s) => s.products);
-  const storeName = useProductStore((s) => s.settings.storeName);
-  const hydrateWallet = useWalletStore((s) => s.hydrate);
-  const seedSamples = useProductStore((s) => s.seedSamples);
+  const [products, setProducts] = useState<ProductListing[]>([]);
+  const [storeName, setStoreName] = useState(DEFAULT_STORE_NAME);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
+  const [checkoutProduct, setCheckoutProduct] =
+    useState<ProductListing | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
 
-  useEffect(() => {
-    seedSamples();
-    const unsub = useProductStore.persist.onFinishHydration(() => {
-      hydrateWallet();
-    });
-    if (useProductStore.persist.hasHydrated()) {
-      hydrateWallet();
-    }
-    return unsub;
-  }, [hydrateWallet, seedSamples]);
+  const hydrateWallet = useWalletStore((s) => s.hydrate);
 
-  function handleBuy(product: Product) {
-    setCheckoutProduct(product);
-  }
+  useEffect(() => {
+    hydrateWallet();
+  }, [hydrateWallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([fetchProducts(), fetchSettings()])
+      .then(([loadedProducts, settings]) => {
+        if (cancelled) return;
+        setProducts(loadedProducts);
+        setStoreName(settings.storeName);
+        setLoadError("");
+        setLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLoadError(
+          error instanceof Error ? error.message : "Could not load the store."
+        );
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  const retryLoad = useCallback(() => {
+    setLoading(true);
+    setLoadError("");
+    setReloadKey((n) => n + 1);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
-      <Header onConnectWallet={() => setWalletOpen(true)} />
+      <Header storeName={storeName} onConnectWallet={() => setWalletOpen(true)} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <section className="mb-10 text-center sm:text-left">
@@ -48,19 +72,53 @@ export function Storefront() {
             {storeName}
           </h1>
           <p className="mt-2 max-w-xl text-[var(--text-secondary)]">
-            Browse products priced in sats. Connect your Alby wallet and pay
-            instantly over the Lightning Network.
+            Browse products priced in sats. Pay with any Lightning wallet —
+            scan the invoice, or connect yours for one-tap checkout.
           </p>
         </section>
 
-        <ProductGrid products={products} onBuy={handleBuy} />
+        {loading && (
+          <div className="flex flex-col items-center gap-3 py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-[var(--bolt)]" />
+            <p className="text-sm text-[var(--text-secondary)]">
+              Loading products…
+            </p>
+          </div>
+        )}
+
+        {!loading && loadError && (
+          <div className="empty-state">
+            <TriangleAlert className="mx-auto h-10 w-10 text-[var(--warning)]" />
+            <h3 className="mt-4 text-lg font-semibold">
+              Could not load the store
+            </h3>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              {loadError}
+            </p>
+            <button onClick={retryLoad} className="btn btn-primary mt-4">
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {!loading && !loadError && (
+          <ProductGrid products={products} onBuy={setCheckoutProduct} />
+        )}
       </main>
 
-      <CheckoutModal
-        product={checkoutProduct}
-        onClose={() => setCheckoutProduct(null)}
+      {checkoutProduct && (
+        <CheckoutModal
+          // Remounting per product gives each checkout clean state, with no
+          // effect needed to reset the previous order.
+          key={checkoutProduct.id}
+          product={checkoutProduct}
+          onClose={() => setCheckoutProduct(null)}
+        />
+      )}
+      <WalletConnectModal
+        open={walletOpen}
+        onClose={() => setWalletOpen(false)}
       />
-      <WalletConnectModal open={walletOpen} onClose={() => setWalletOpen(false)} />
     </div>
   );
 }
