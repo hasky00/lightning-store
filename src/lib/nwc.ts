@@ -1,45 +1,34 @@
 "use client";
 
-import {
-  NWCClient,
-  NostrWebLNProvider,
-  type Nip47Method,
-} from "@getalby/sdk";
-import { satsToMsats } from "./utils";
+import { NostrWebLNProvider, type Nip47Method } from "@getalby/sdk";
+
+/**
+ * Buyer-side wallet access.
+ *
+ * Only the *buyer's* wallet is handled in the browser, which is correct: it is
+ * their key and their choice to spend. The shop's own wallet lives on the
+ * server and is never loaded here.
+ */
 
 export const DEFAULT_HUB_URL = "https://my.albyhub.com";
 export const HUB_CONNECTIONS_URL = `${DEFAULT_HUB_URL}/connections`;
 
 const STORAGE_BUYER_KEY = "lightning-store-buyer-nwc";
-const STORAGE_MERCHANT_KEY = "lightning-store-merchant-nwc";
 const STORAGE_HUB_KEY = "lightning-store-hub-url";
 
-const MERCHANT_METHODS: Nip47Method[] = [
-  "get_info",
-  "get_balance",
-  "make_invoice",
-  "lookup_invoice",
-];
+/** A buyer wallet only ever needs to spend; it never issues invoices. */
+const BUYER_METHODS: Nip47Method[] = ["get_info", "get_balance", "pay_invoice"];
 
-const BUYER_METHODS: Nip47Method[] = [
-  "get_info",
-  "get_balance",
-  "pay_invoice",
-];
-
-export function saveNwcUrl(role: "buyer" | "merchant", url: string) {
-  const key = role === "buyer" ? STORAGE_BUYER_KEY : STORAGE_MERCHANT_KEY;
-  localStorage.setItem(key, url);
+export function saveNwcUrl(url: string) {
+  localStorage.setItem(STORAGE_BUYER_KEY, url);
 }
 
-export function loadNwcUrl(role: "buyer" | "merchant"): string | null {
-  const key = role === "buyer" ? STORAGE_BUYER_KEY : STORAGE_MERCHANT_KEY;
-  return localStorage.getItem(key);
+export function loadNwcUrl(): string | null {
+  return localStorage.getItem(STORAGE_BUYER_KEY);
 }
 
-export function clearNwcUrl(role: "buyer" | "merchant") {
-  const key = role === "buyer" ? STORAGE_BUYER_KEY : STORAGE_MERCHANT_KEY;
-  localStorage.removeItem(key);
+export function clearNwcUrl() {
+  localStorage.removeItem(STORAGE_BUYER_KEY);
 }
 
 export function saveHubUrl(url: string) {
@@ -51,58 +40,30 @@ export function loadHubUrl(): string {
 }
 
 export function buildHubAuthUrl(hubUrl: string): string {
-  const base = hubUrl.trim().replace(/\/$/, "");
-  return `${base}/apps/new`;
+  return `${hubUrl.trim().replace(/\/$/, "")}/apps/new`;
 }
 
 export async function connectViaAlby(
-  role: "buyer" | "merchant",
   hubUrl = loadHubUrl(),
   appName = "Lightning Store"
 ): Promise<string> {
-  const authUrl = buildHubAuthUrl(hubUrl);
-  const requestMethods = role === "merchant" ? MERCHANT_METHODS : BUYER_METHODS;
-
-  const provider = await NostrWebLNProvider.fromAuthorizationUrl(authUrl, {
-    name: `${appName} (${role})`,
-    requestMethods,
-  });
+  const provider = await NostrWebLNProvider.fromAuthorizationUrl(
+    buildHubAuthUrl(hubUrl),
+    { name: appName, requestMethods: BUYER_METHODS }
+  );
   await provider.enable();
   const url = provider.client.getNostrWalletConnectUrl(true);
-  saveNwcUrl(role, url);
+  saveNwcUrl(url);
   saveHubUrl(hubUrl);
   provider.close();
   return url;
 }
 
-export function createMerchantClient(url: string): NWCClient {
-  return new NWCClient({ nostrWalletConnectUrl: url });
-}
-
-export function createBuyerProvider(url: string): NostrWebLNProvider {
-  return new NostrWebLNProvider({ nostrWalletConnectUrl: url });
-}
-
-export async function createProductInvoice(
-  merchantUrl: string,
-  priceSats: number,
-  description: string
-): Promise<string> {
-  const client = createMerchantClient(merchantUrl);
-  const tx = await client.makeInvoice({
-    amount: satsToMsats(priceSats),
-    description,
-    expiry: 600,
-  });
-  return tx.invoice;
-}
-
 export async function payInvoice(buyerUrl: string, invoice: string) {
-  const provider = createBuyerProvider(buyerUrl);
+  const provider = new NostrWebLNProvider({ nostrWalletConnectUrl: buyerUrl });
   await provider.enable();
   try {
-    const result = await provider.sendPayment(invoice);
-    return result;
+    return await provider.sendPayment(invoice);
   } finally {
     provider.close();
   }

@@ -9,14 +9,43 @@ export interface Product {
 
 export interface StoreSettings {
   storeName: string;
-  merchantNwcUrl: string;
 }
 
-export type WalletRole = "buyer" | "merchant";
+/**
+ * Where an order stands, as reported by the merchant wallet. Note there is no
+ * client-settable variant of this: the browser reads these values, it never
+ * produces them.
+ */
+export type PaymentState = "pending" | "paid" | "expired" | "failed";
 
-export interface CheckoutState {
-  product: Product;
+export interface CheckoutResponse {
+  /** Signed, opaque token used to poll this order's status. */
+  orderId: string;
   invoice: string;
-  status: "creating" | "ready" | "paying" | "paid" | "error";
-  error?: string;
+  /** Unix seconds. */
+  expiresAt: number;
+  product: Pick<Product, "id" | "name" | "priceSats">;
+}
+
+export interface OrderStatusResponse {
+  orderId: string;
+  state: PaymentState;
+  settledAt: number | null;
+  amountSats: number;
+  productId: string;
+  priceSats: number;
+  expiresAt: number;
+}
+
+export type ApiErrorCode =
+  | "BAD_REQUEST"
+  | "NOT_FOUND"
+  | "UNAUTHORIZED"
+  | "MERCHANT_NOT_CONFIGURED"
+  | "WALLET_ERROR"
+  | "INTERNAL";
+
+export interface ApiErrorBody {
+  error: string;
+  code: ApiErrorCode;
 }

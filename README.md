@@ -20,39 +20,85 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Merchant wallet setup (required for checkout)
+## Setup
 
-Invoices are created and verified **on the server**, so the store needs its own
-wallet connection. It is never sent to the browser.
+Copy the template and fill it in:
 
-1. Copy the template: `cp .env.example .env.local`
-2. At [Alby Hub](https://my.albyhub.com) go to **Connections -> Add Connection**
-   and enable the `make_invoice` and `lookup_invoice` permissions. Leave
-   `pay_invoice` **off** — the store only receives.
-3. Paste the connection string into `MERCHANT_NWC_URL`.
-4. Generate a signing key: `openssl rand -hex 32`, and put it in
-   `ORDER_SIGNING_SECRET`.
+```bash
+cp .env.example .env.local
+```
+
+**`MERCHANT_NWC_URL`** — the shop's own wallet. At [Alby Hub](https://my.albyhub.com)
+go to **Connections -> Add Connection** and enable `make_invoice` and
+`lookup_invoice`. Leave `pay_invoice` **off**: the shop only ever receives, so
+even a stolen key cannot spend.
+
+**`ORDER_SIGNING_SECRET`** — signs order ids. Generate with `openssl rand -hex 32`.
+
+**`ADMIN_PASSWORD`** — guards `/admin` and every catalogue write. At least 12
+characters. Until it is set, the admin area is locked rather than open.
 
 `.env.local` is gitignored. Never commit a filled-in copy.
 
-## API
+## How a payment works
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/products` | The catalogue, read from `data/products.json`. |
-| `POST /api/checkout` | Takes `{ productId }`, returns `{ orderId, invoice, expiresAt, product }`. |
-| `GET /api/orders/{orderId}` | Returns `{ state, settledAt, amountSats, ... }` where `state` is `pending`, `paid`, `expired` or `failed`. |
+```
+Buyer clicks Buy
+  -> POST /api/checkout { productId }          (a product id, never a price)
+  -> server reads the price from its catalogue
+  -> merchant wallet mints the invoice
+  -> browser gets { orderId, invoice }         (never the wallet secret)
+
+Browser shows the QR and polls GET /api/orders/{orderId}
+  -> server asks the wallet: lookup_invoice
+  -> settled? the order is paid
+```
 
 Two rules make this safe to take money with:
 
-- **The browser never states a price.** Checkout sends only a product id; the
-  server looks the price up in the catalogue before minting an invoice.
-- **The browser never states that it paid.** `state` comes from asking the
-  merchant wallet via `lookup_invoice`. A client cannot assert `paid`.
+- **The browser never states a price.** Checkout sends only a product id.
+- **The browser never states that it paid.** Settlement comes from the wallet.
 
-The `orderId` is a signed token rather than a database row: it carries the
-payment hash and is HMAC-signed, so it cannot be forged or altered, and it
-cannot be used to look up anyone else's payments. The wallet is the ledger.
+Because confirmation is server-side, scanning the QR with *any* Lightning
+wallet works exactly as well as paying with a connected one — the shop finds
+out the same way either way.
+
+The `orderId` is an HMAC-signed token carrying the payment hash rather than a
+database row, so the wallet stays the single source of truth for payment. The
+signature stops forgery and stops anyone using it to look up other payments.
+
+## API
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `GET /api/products` | public | The catalogue |
+| `GET /api/settings` | public | Shop name |
+| `POST /api/checkout` | public | Mint an invoice for a product |
+| `GET /api/orders/{orderId}` | signed token | `pending` / `paid` / `expired` / `failed` |
+| `POST /api/admin/session` | password | Sign in |
+| `GET`/`DELETE /api/admin/session` | cookie | Check / end session |
+| `POST /api/products` | admin | Add a product |
+| `DELETE /api/products/{id}` | admin | Remove a product and its image |
+| `PATCH /api/settings` | admin | Rename the shop |
+
+## Where data lives
+
+| Thing | Where | Why |
+| --- | --- | --- |
+| Merchant wallet key | server env | Secret; must never reach a browser |
+| Products, shop name | `data/*.json` | Server-owned; prices must be trustworthy |
+| Product images | `public/uploads/` | Files, so the catalogue stays small |
+| Buyer's wallet | their browser | Their key, their choice to spend |
+
+`data/` and `public/uploads/` are gitignored runtime state — that is the shop's
+own content, not source. Back them up, or mount them as a volume when
+deploying. A fresh clone starts from the seed catalogue in
+`src/server/seed-products.ts`.
+
+Both are on local disk, so the store as written wants a normal server or
+container with a persistent volume. On a read-only or per-request filesystem
+(typical serverless hosting) reads work but admin writes will not — swap
+`src/server/json-store.ts` for a database and everything above it stays as is.
 
 ## Learn More
 

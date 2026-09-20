@@ -18,9 +18,17 @@ const PLACEHOLDER_GRADIENTS = [
   "from-yellow-400/30 to-amber-600/20",
 ];
 
+/**
+ * Hash the whole id, not just its first character: ids that share a prefix
+ * (every seeded product starts "seed-") would otherwise all pick the same
+ * colour and the grid would look like one flat block.
+ */
 function getGradient(id: string) {
-  const index = id.charCodeAt(0) % PLACEHOLDER_GRADIENTS.length;
-  return PLACEHOLDER_GRADIENTS[index];
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) % 1_000_000_007;
+  }
+  return PLACEHOLDER_GRADIENTS[hash % PLACEHOLDER_GRADIENTS.length];
 }
 
 export function ProductCard({ product, onBuy }: ProductCardProps) {

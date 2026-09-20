@@ -1,29 +1,24 @@
 import "server-only";
 
+import type { ApiErrorBody, ApiErrorCode } from "@/lib/types";
 import { ConfigError } from "./env";
 
 /**
  * Shared shape for API failures, so the frontend can branch on `code` rather
  * than pattern-matching English error messages.
  */
-export interface ApiError {
-  error: string;
-  code: ApiErrorCode;
-}
-
-export type ApiErrorCode =
-  | "BAD_REQUEST"
-  | "NOT_FOUND"
-  | "MERCHANT_NOT_CONFIGURED"
-  | "WALLET_ERROR"
-  | "INTERNAL";
-
 export function apiError(
   code: ApiErrorCode,
   message: string,
   status: number
 ): Response {
-  return Response.json({ error: message, code } satisfies ApiError, { status });
+  return Response.json({ error: message, code } satisfies ApiErrorBody, {
+    status,
+  });
+}
+
+export function unauthorized(): Response {
+  return apiError("UNAUTHORIZED", "Sign in to the admin area first.", 401);
 }
 
 /**
@@ -37,7 +32,7 @@ export function handleUnexpected(error: unknown, context: string): Response {
     console.error(`[${context}] configuration error:`, error.message);
     return apiError(
       "MERCHANT_NOT_CONFIGURED",
-      "This store has no merchant wallet configured yet.",
+      "This store is not fully configured yet.",
       503
     );
   }

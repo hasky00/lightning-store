@@ -1,7 +1,11 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { orderSigningSecret } from "./env";
+import {
+  decodePayload,
+  encodePayload,
+  signPayload,
+  verifySignature,
+} from "./signing";
 
 /**
  * An order token is a signed, self-contained receipt handed to the buyer when
@@ -10,6 +14,9 @@ import { orderSigningSecret } from "./env";
  * without the server needing an orders table — the wallet itself is the
  * ledger, and this token is just a signed pointer into it.
  */
+
+const PURPOSE = "order";
+
 export interface OrderClaims {
   /** Payment hash of the invoice, used for `lookup_invoice`. */
   paymentHash: string;
@@ -26,23 +33,14 @@ interface EncodedClaims {
   exp: number;
 }
 
-function b64url(input: Buffer | string): string {
-  return Buffer.from(input).toString("base64url");
-}
-
-function sign(payload: string): string {
-  return createHmac("sha256", orderSigningSecret()).update(payload).digest("base64url");
-}
-
 export function createOrderToken(claims: OrderClaims): string {
-  const encoded: EncodedClaims = {
+  const payload = encodePayload({
     ph: claims.paymentHash,
     pid: claims.productId,
     sats: claims.priceSats,
     exp: claims.expiresAt,
-  };
-  const payload = b64url(JSON.stringify(encoded));
-  return `${payload}.${sign(payload)}`;
+  } satisfies EncodedClaims);
+  return `${payload}.${signPayload(PURPOSE, payload)}`;
 }
 
 export class InvalidOrderTokenError extends Error {
@@ -58,18 +56,13 @@ export function verifyOrderToken(token: string): OrderClaims {
     throw new InvalidOrderTokenError("Malformed order token");
   }
 
-  const expected = Buffer.from(sign(payload));
-  const provided = Buffer.from(signature);
-  if (
-    expected.length !== provided.length ||
-    !timingSafeEqual(expected, provided)
-  ) {
+  if (!verifySignature(PURPOSE, payload, signature)) {
     throw new InvalidOrderTokenError("Order token signature does not match");
   }
 
   let decoded: EncodedClaims;
   try {
-    decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    decoded = decodePayload<EncodedClaims>(payload);
   } catch {
     throw new InvalidOrderTokenError("Order token payload is not valid JSON");
   }

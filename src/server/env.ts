@@ -50,3 +50,15 @@ export function orderSigningSecret(): string {
   }
   return secret;
 }
+
+/**
+ * Password for the admin area. Required before anything can change the
+ * catalogue, so an unconfigured store is locked rather than wide open.
+ */
+export function adminPassword(): string {
+  const password = required("ADMIN_PASSWORD");
+  if (password.length < 12) {
+    throw new ConfigError("ADMIN_PASSWORD must be at least 12 characters.");
+  }
+  return password;
+}

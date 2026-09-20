@@ -41,3 +41,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Runtime store data: the catalogue, settings and uploaded product images.
+# This is the shop's own content, not source. Back it up / mount it as a
+# volume when deploying; a fresh clone starts from the seed catalogue.
+/data/
+/public/uploads/
